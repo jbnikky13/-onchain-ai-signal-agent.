@@ -1,6 +1,4 @@
-def combine(s):
-    w={"trend":1.3,"momentum":1.1,"volume":1,"volatility":.8,"onchain":1,"whales":.8,"derivatives":.8,"liquidity":.8,"sentiment":.7,"fundamentals":1,"macro":.7}
-    return round(sum(v*w.get(k,1) for k,v in s.items())/sum(w.get(k,1) for k in s),1)
-def action(x):
-    return "BUY" if x>=72 else "SELL" if x<=38 else "NO SIGNAL"
-
+WEIGHTS={'trend':1.35,'momentum':1.2,'volume':.9,'volatility':.65,'onchain':1.0,'whales':.75,'derivatives':.8,'liquidity':.9,'sentiment':.8,'fundamentals':.8,'macro':.8}
+def combine(scores): return round(sum(v*WEIGHTS.get(k,1) for k,v in scores.items())/sum(WEIGHTS.get(k,1) for k in scores),1)
+def action(score): return 'BULLISH' if score>=72 else 'BEARISH' if score<=38 else 'NEUTRAL'
+def label(score): return 'BUY BIAS' if score>=72 else 'SELL BIAS' if score<=38 else 'NO CLEAR EDGE'
