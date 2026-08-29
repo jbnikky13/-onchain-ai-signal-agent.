@@ -4,39 +4,37 @@ A Vercel-ready, research-only market intelligence terminal for crypto, equities,
 
 ## Working modules
 
-- **Market Overview** — live Binance USDT spot universe, volume leaders and movers.
-- **Daily / Swing / Long-Term Research** — technical indicators, confluence scoring and scenario ranges.
-- **On-Chain Explorer** — read-only EVM analysis for Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain.
-  - Address classification: EOA vs contract
-  - Native balance
-  - Transaction count / nonce
-  - Latest block and gas price
-  - Contract bytecode size
-  - ERC-20 metadata when exposed by the contract
-  - Basic proxy-bytecode hint
-  - Transaction lookup with receipt status, sender, recipient, value, block and gas used
-- **New Listings Radar** — recently onboarded Binance USDT pairs.
-- **Equity Intelligence** — optional Alpha Vantage adapter.
-- **NFP & Macro** — BLS employment adapter without an API key.
-- **Performance & Audit** — local/ephemeral research history.
-- **AI narrative** — optional OpenAI explanation layer.
+- Market Overview — live Binance USDT spot market data
+- Daily / Swing / Long-Term Research — technical scoring and scenario ranges
+- On-Chain Explorer — live read-only EVM address, contract and transaction analysis
+- New Listings Radar — recent Binance USDT listings
+- Equity Intelligence — optional Alpha Vantage adapter
+- NFP & Macro — BLS employment adapter
+- Performance & Audit — research history
+- Optional AI research narratives
 
-## Production architecture
+## On-chain data
 
-- Vercel hosts the static dashboard and Python/FastAPI serverless API.
-- Binance public endpoints provide crypto spot market data.
-- Public EVM RPC endpoints provide read-only blockchain state; no wallet connection or transaction signing is used.
-- BLS provides U.S. employment/NFP series without an API key.
-- Alpha Vantage and Finnhub are optional adapters.
-- SQLite is used as a lightweight audit trail. On Vercel, `/tmp/signals.db` is ephemeral; use a hosted database if durable history is required.
+The explorer now uses live JSON-RPC calls rather than hardcoded blockchain results. Default public RPC endpoints are supplied for Ethereum, Base, Arbitrum, Optimism, Polygon and BNB Chain, and each provider can be replaced through environment variables.
+
+Supported environment variables:
+
+```text
+EVM_RPC_ETHEREUM=
+EVM_RPC_BASE=
+EVM_RPC_ARBITRUM=
+EVM_RPC_OPTIMISM=
+EVM_RPC_POLYGON=
+EVM_RPC_BNB=
+```
+
+Leave these blank to use the public defaults. For production, a dedicated RPC provider is recommended for better rate limits and reliability.
 
 ## Vercel deployment
 
-1. Import this GitHub repository into Vercel.
-2. Keep the repository root as the project root.
-3. Vercel should detect `api/index.py` as the Python function and use `vercel.json` for routing.
-4. Deploy.
-5. Add optional environment variables in **Project → Settings → Environment Variables**.
+Import the repository into Vercel with the repository root as the project root. Vercel uses `api/index.py` and `vercel.json` for the FastAPI serverless API and static dashboard.
+
+Optional variables:
 
 ```text
 OPENAI_API_KEY=
@@ -46,9 +44,15 @@ FINNHUB_API_KEY=
 BINANCE_BASE_URL=https://api.binance.com
 REQUEST_TIMEOUT=15
 CACHE_TTL=45
+EVM_RPC_ETHEREUM=
+EVM_RPC_BASE=
+EVM_RPC_ARBITRUM=
+EVM_RPC_OPTIMISM=
+EVM_RPC_POLYGON=
+EVM_RPC_BNB=
 ```
 
-The core crypto feed, BLS feed and EVM read-only explorer do not require private API keys.
+No private API key is required for the default Binance, BLS or public EVM feeds.
 
 ## Local run
 
@@ -57,12 +61,10 @@ pip install -r requirements.txt
 uvicorn backend.main:app --reload
 ```
 
-Open `http://localhost:8000`.
-
-API documentation is available at `/api/docs`.
+Open `http://localhost:8000`. API documentation is available at `/api/docs`.
 
 ## Research disclaimer
 
-This application is research software. It does not execute orders. Market scores, scenarios, blockchain classifications and AI narratives are probabilistic or descriptive outputs, not guarantees or financial advice. Always independently verify important information.
+This application is research software. It does not execute orders or sign transactions. Blockchain data is descriptive and market scores/scenarios are probabilistic research outputs, not guarantees or financial advice. Always independently verify important information.
 
-Do not commit real API keys to GitHub.
+Do not commit real API keys or private RPC credentials to GitHub.
