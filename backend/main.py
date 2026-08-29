@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, Query
-from .services.binance import get_symbols,get_klines,get_ticker_24h,market_snapshot,get_new_listings
+from .services.binance import get_symbols,get_klines,get_ticker_24h,market_snapshot,get_new_listings,market_status
 from .services.stocks import get_stock
 from .services.news import get_company_news
 from .services.macro import get_employment_snapshot
@@ -10,23 +10,23 @@ from .engine.signal import analyze_crypto
 from .engine.ai import explain
 from .db import init_db,save_signal,recent,stats
 
-app=FastAPI(title="Onchain AI Market Intelligence API",version="2.4.1",docs_url="/api/docs",redoc_url="/api/redoc")
+app=FastAPI(title="Onchain AI Market Intelligence API",version="2.4.2",docs_url="/api/docs",redoc_url="/api/redoc")
 
 @app.on_event("startup")
 def startup():
-    # SQLite is only an ephemeral audit cache on Vercel. A database failure
-    # must not prevent the API itself from starting and serving read-only data.
-    try:
-        init_db()
-    except Exception:
-        pass
+    try: init_db()
+    except Exception: pass
 
 @app.get("/api")
-def api_root(): return {"ok":True,"service":"onchain-ai","version":"2.4.1","mode":"research-only","modules":["market","technical","onchain","token-intelligence","signal-fusion","whales","liquidity","risk","listings","stocks","macro","history"]}
+def api_root(): return {"ok":True,"service":"onchain-ai","version":"2.4.2","mode":"research-only"}
 @app.get("/api/health")
-def health(): return {"ok":True,"service":"onchain-ai","version":"2.4.1"}
+def health(): return {"ok":True,"service":"onchain-ai","version":"2.4.2"}
+@app.get("/api/market/status")
+def market_feed_status(): return market_status()
 @app.get("/api/overview")
-def overview(): return market_snapshot()
+def overview():
+    try: return market_snapshot()
+    except Exception as exc: raise HTTPException(502,f"Live market feed unavailable: {str(exc)[:180]}")
 @app.get("/api/crypto/symbols")
 def symbols():
     s=get_symbols(); return {"count":len(s),"symbols":s}
