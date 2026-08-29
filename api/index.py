@@ -51,16 +51,6 @@ async def app(scope, receive, send):
         return
 
     path = scope.get("path", "")
-    if path in {"/api/_debug", "/_debug"}:
-        await _send_json(send, 200, {
-            "received_path": path,
-            "raw_path": scope.get("raw_path", b"").decode("utf-8", "replace"),
-            "query_string": scope.get("query_string", b"").decode("utf-8", "replace"),
-            "root_path": scope.get("root_path", ""),
-            "method": scope.get("method", ""),
-        })
-        return
-
     if path in {"/api/health", "/health"}:
         await _send_json(send, 200, {
             "ok": True,
