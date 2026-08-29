@@ -8,6 +8,8 @@
   },
   "rewrites": [
     { "source": "/static/:path*", "destination": "/frontend/:path*" },
+    { "source": "/api/:path*", "destination": "/api/index.py" },
+    { "source": "/api", "destination": "/api/index.py" },
     { "source": "/", "destination": "/frontend/index.html" }
   ]
 }
