@@ -1,9 +1,8 @@
-"""Vercel entrypoint for Onchain AI.
+"""Vercel ASGI entrypoint for Onchain AI.
 
-The backend is imported lazily. This is intentional: Vercel imports the
-function module during deployment/cold start, and optional configuration or
-backend dependencies should not be able to crash the entire function before
-we can even answer /api/health.
+The application stack is imported lazily so a configuration/dependency error
+cannot prevent Vercel from importing the function. A lightweight health path
+is handled without importing FastAPI or any backend services.
 """
 from __future__ import annotations
 
@@ -15,27 +14,30 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+_fastapi_app = None
+_backend_error = None
 
-def _json_response(send, status: int, payload: dict):
+
+def _send_json(send, status: int, payload: dict):
     body = json.dumps(payload).encode("utf-8")
-    return send({
-        "type": "http.response.start",
-        "status": status,
-        "headers": [
-            (b"content-type", b"application/json; charset=utf-8"),
-            (b"content-length", str(len(body)).encode("ascii")),
-        ],
-    }, body)
+    return send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"application/json; charset=utf-8"),
+                (b"cache-control", b"no-store"),
+                (b"content-length", str(len(body)).encode("ascii")),
+            ],
+        },
+        body,
+    )
 
 
 async def app(scope, receive, send):
-    """ASGI callable exposed to Vercel.
+    """ASGI callable exposed as the Vercel Python function."""
+    global _fastapi_app, _backend_error
 
-    Health is deliberately dependency-free. All other requests lazily load
-    the real FastAPI application so import/startup failures are isolated to
-    application requests instead of preventing the serverless function from
-    being imported.
-    """
     if scope.get("type") == "lifespan":
         while True:
             message = await receive()
@@ -50,43 +52,29 @@ async def app(scope, receive, send):
 
     path = scope.get("path", "")
     if path in {"/api/health", "/health"}:
-        body = json.dumps({
+        await _send_json(send, 200, {
             "ok": True,
             "service": "onchain-ai",
             "version": "2.4.2",
             "runtime": "vercel-python",
             "backend": "lazy-import",
-        }).encode("utf-8")
-        await send({
-            "type": "http.response.start",
-            "status": 200,
-            "headers": [
-                (b"content-type", b"application/json; charset=utf-8"),
-                (b"cache-control", b"no-store"),
-                (b"content-length", str(len(body)).encode("ascii")),
-            ],
         })
-        await send({"type": "http.response.body", "body": body})
         return
 
-    try:
-        from backend.main import app as fastapi_app
-    except Exception as exc:
-        body = json.dumps({
+    if _fastapi_app is None and _backend_error is None:
+        try:
+            from backend.main import app as imported_app
+            _fastapi_app = imported_app
+        except Exception as exc:
+            _backend_error = exc
+
+    if _fastapi_app is None:
+        await _send_json(send, 500, {
             "ok": False,
             "error": "Backend startup failed",
-            "detail": str(exc),
-            "type": type(exc).__name__,
-        }).encode("utf-8")
-        await send({
-            "type": "http.response.start",
-            "status": 500,
-            "headers": [
-                (b"content-type", b"application/json; charset=utf-8"),
-                (b"content-length", str(len(body)).encode("ascii")),
-            ],
+            "detail": str(_backend_error),
+            "type": type(_backend_error).__name__ if _backend_error else "UnknownError",
         })
-        await send({"type": "http.response.body", "body": body})
         return
 
-    await fastapi_app(scope, receive, send)
+    await _fastapi_app(scope, receive, send)
