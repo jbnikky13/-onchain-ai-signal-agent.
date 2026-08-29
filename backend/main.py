@@ -7,19 +7,20 @@ from .services.onchain import RPCS,analyze_address,contract_metadata,transaction
 from .services.intelligence import intelligence,transfers,whales,liquidity,risk,holders_from_transfers
 from .services.fusion import build_signal_fusion
 from .engine.signal import analyze_crypto
-from .engine.technical import indicators,technical_scores
+from .engine.technical import technical_scores
+from .engine.fused_signal import build_fused_market_signal
 from .engine.ai import explain
 from .db import init_db,save_signal,recent,stats
 
-app=FastAPI(title="Onchain AI Market Intelligence API",version="2.5.0",docs_url="/api/docs",redoc_url="/api/redoc")
+app=FastAPI(title="Onchain AI Market Intelligence API",version="2.7.0",docs_url="/api/docs",redoc_url="/api/redoc")
 @app.on_event("startup")
 def startup():
     try:init_db()
     except Exception:pass
 @app.get("/api")
-def api_root():return {"ok":True,"service":"onchain-ai","version":"2.5.0","mode":"research-only"}
+def api_root():return {"ok":True,"service":"onchain-ai","version":"2.7.0","mode":"research-only"}
 @app.get("/api/health")
-def health():return {"ok":True,"service":"onchain-ai","version":"2.5.0"}
+def health():return {"ok":True,"service":"onchain-ai","version":"2.7.0"}
 @app.get("/api/market/status")
 def market_feed_status():return market_status()
 @app.get("/api/overview")
@@ -35,12 +36,30 @@ def ticker():
 @app.get("/api/crypto/{symbol}/technical")
 def technical(symbol:str,interval:str=Query("1h",pattern="^(5m|15m|1h|4h|1d)$"),limit:int=300):
     try:
-        df=get_klines(symbol.upper(),interval,min(max(limit,80),500));
+        df=get_klines(symbol.upper(),interval,min(max(limit,80),500))
         if len(df)<60:raise HTTPException(400,"Not enough market history for technical analysis.")
         d,scores,raw=technical_scores(df);x=d.iloc[-1]
         return {"symbol":symbol.upper(),"interval":interval,"price":float(x.close),"scores":scores,"indicators":{"ema20":float(x.ema20),"ema50":float(x.ema50),"ema200":float(x.ema200),"rsi":float(x.rsi),"macd":float(x.macd),"macd_signal":float(x.macd_signal),"macd_hist":float(x.macd_hist),"atr":float(x.atr),"volume":float(x.volume),"volume_ma20":float(x.vol_ma20),"volatility20":float(x.volatility20)},"returns":{"7d":raw["ret_7d"],"30d":raw["ret_30d"]},"bars":len(d)}
     except HTTPException:raise
     except Exception as exc:raise HTTPException(502,f"Technical data unavailable: {str(exc)[:160]}")
+@app.get("/api/crypto/{symbol}/fused")
+def fused(symbol:str,chain:str|None=None,token:str|None=None,interval:str=Query("1h",pattern="^(5m|15m|1h|4h|1d)$"),limit:int=300):
+    try:
+        df=get_klines(symbol.upper(),interval,min(max(limit,80),500))
+        if len(df)<60:raise HTTPException(400,"Not enough market history for fused analysis.")
+        context={"score":50,"liquidity":50,"safety":50,"label":"NOT PROVIDED"}
+        onchain_detail=None
+        if chain and token:
+            fusion=build_signal_fusion(chain,token)
+            if not fusion.get("ok"):raise HTTPException(502,"On-chain intelligence could not be loaded for this token.")
+            oc=fusion.get("components",{})
+            context={"score":fusion.get("fusion_score",50),"liquidity":oc.get("dex_liquidity",50),"safety":oc.get("contract_safety",50),"label":fusion.get("label","NEUTRAL")}
+            onchain_detail=fusion
+        result=build_fused_market_signal(df,context)
+        result.update({"symbol":symbol.upper(),"interval":interval,"onchain":onchain_detail or {"score":50,"label":"NOT PROVIDED"},"data_mode":"multi-source" if onchain_detail else "market-only"})
+        return result
+    except HTTPException:raise
+    except Exception as exc:raise HTTPException(502,f"Fused signal unavailable: {str(exc)[:160]}")
 @app.get("/api/crypto/{symbol}")
 def crypto(symbol:str,horizon:str=Query("swing",pattern="^(swing|long_term)$")):
     try:
