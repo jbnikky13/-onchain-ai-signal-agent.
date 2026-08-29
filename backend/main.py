@@ -10,13 +10,21 @@ from .engine.signal import analyze_crypto
 from .engine.ai import explain
 from .db import init_db,save_signal,recent,stats
 
-app=FastAPI(title="Onchain AI Market Intelligence API",version="2.4.0",docs_url="/api/docs",redoc_url="/api/redoc")
+app=FastAPI(title="Onchain AI Market Intelligence API",version="2.4.1",docs_url="/api/docs",redoc_url="/api/redoc")
+
 @app.on_event("startup")
-def startup(): init_db()
+def startup():
+    # SQLite is only an ephemeral audit cache on Vercel. A database failure
+    # must not prevent the API itself from starting and serving read-only data.
+    try:
+        init_db()
+    except Exception:
+        pass
+
 @app.get("/api")
-def api_root(): return {"ok":True,"service":"onchain-ai","version":"2.4.0","mode":"research-only","modules":["market","technical","onchain","token-intelligence","signal-fusion","whales","liquidity","risk","listings","stocks","macro","history"]}
+def api_root(): return {"ok":True,"service":"onchain-ai","version":"2.4.1","mode":"research-only","modules":["market","technical","onchain","token-intelligence","signal-fusion","whales","liquidity","risk","listings","stocks","macro","history"]}
 @app.get("/api/health")
-def health(): return {"ok":True,"service":"onchain-ai","version":"2.4.0"}
+def health(): return {"ok":True,"service":"onchain-ai","version":"2.4.1"}
 @app.get("/api/overview")
 def overview(): return market_snapshot()
 @app.get("/api/crypto/symbols")
@@ -30,7 +38,10 @@ def crypto(symbol:str,horizon:str=Query("swing",pattern="^(swing|long_term)$")):
     try:
         symbol=symbol.upper(); df=get_klines(symbol,"1d",180)
         if len(df)<60: raise HTTPException(400,"Not enough market history for this asset.")
-        signal=analyze_crypto(symbol,df,horizon); signal["ai"]=explain(signal); save_signal(signal); return signal
+        signal=analyze_crypto(symbol,df,horizon); signal["ai"]=explain(signal)
+        try: save_signal(signal)
+        except Exception: pass
+        return signal
     except HTTPException: raise
     except Exception as exc: raise HTTPException(502,f"Market data unavailable: {str(exc)[:120]}")
 @app.get("/api/new-listings")
@@ -91,6 +102,10 @@ def news(symbol:str): return get_company_news(symbol)
 @app.get("/api/macro/nfp")
 def nfp(): return get_employment_snapshot()
 @app.get("/api/history")
-def history(limit:int=100): return recent(min(max(limit,1),500))
+def history(limit:int=100):
+    try:return recent(min(max(limit,1),500))
+    except Exception:return []
 @app.get("/api/performance")
-def performance(): return stats()
+def performance():
+    try:return stats()
+    except Exception:return {"signals":0,"average_score":0,"buy_calls":0,"sell_calls":0}
