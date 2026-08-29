@@ -5,17 +5,18 @@ from .services.news import get_company_news
 from .services.macro import get_employment_snapshot
 from .services.onchain import RPCS,analyze_address,contract_metadata,transaction
 from .services.intelligence import intelligence,transfers,whales,liquidity,risk,holders_from_transfers
+from .services.fusion import build_signal_fusion
 from .engine.signal import analyze_crypto
 from .engine.ai import explain
 from .db import init_db,save_signal,recent,stats
 
-app=FastAPI(title="Onchain AI Market Intelligence API",version="2.3.0",docs_url="/api/docs",redoc_url="/api/redoc")
+app=FastAPI(title="Onchain AI Market Intelligence API",version="2.4.0",docs_url="/api/docs",redoc_url="/api/redoc")
 @app.on_event("startup")
 def startup(): init_db()
 @app.get("/api")
-def api_root(): return {"ok":True,"service":"onchain-ai","version":"2.3.0","mode":"research-only","modules":["market","technical","onchain","token-intelligence","whales","liquidity","risk","listings","stocks","macro","history"]}
+def api_root(): return {"ok":True,"service":"onchain-ai","version":"2.4.0","mode":"research-only","modules":["market","technical","onchain","token-intelligence","signal-fusion","whales","liquidity","risk","listings","stocks","macro","history"]}
 @app.get("/api/health")
-def health(): return {"ok":True,"service":"onchain-ai","version":"2.3.0"}
+def health(): return {"ok":True,"service":"onchain-ai","version":"2.4.0"}
 @app.get("/api/overview")
 def overview(): return market_snapshot()
 @app.get("/api/crypto/symbols")
@@ -56,6 +57,11 @@ def token_intel(chain:str,address:str):
     try:return intelligence(chain,address)
     except ValueError as exc:raise HTTPException(400,str(exc))
     except Exception as exc:raise HTTPException(502,f"Token intelligence unavailable: {str(exc)[:160]}")
+@app.get("/api/onchain/{chain}/token/{address}/fusion")
+def token_fusion(chain:str,address:str,market_score:float|None=None,market_bias:str|None=None):
+    try:return build_signal_fusion(chain,address,market_score,market_bias)
+    except ValueError as exc:raise HTTPException(400,str(exc))
+    except Exception as exc:raise HTTPException(502,f"Signal fusion unavailable: {str(exc)[:160]}")
 @app.get("/api/onchain/{chain}/token/{address}/transfers")
 def token_transfer_api(chain:str,address:str,limit:int=100):
     try:return transfers(chain,address,min(max(limit,1),100))
