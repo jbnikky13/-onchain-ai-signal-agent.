@@ -9,13 +9,14 @@ from .services.binance import (
 from .services.stocks import get_stock
 from .services.news import get_company_news
 from .services.macro import get_employment_snapshot
+from .services.onchain import RPCS, analyze_address, contract_metadata, transaction
 from .engine.signal import analyze_crypto
 from .engine.ai import explain
 from .db import init_db, save_signal, recent, stats
 
 app = FastAPI(
     title="Onchain AI Market Intelligence API",
-    version="2.1.0",
+    version="2.2.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -23,7 +24,6 @@ app = FastAPI(
 
 @app.on_event("startup")
 def startup():
-    # Safe on Vercel: config.py points SQLite at /tmp there.
     init_db()
 
 
@@ -32,14 +32,15 @@ def api_root():
     return {
         "ok": True,
         "service": "onchain-ai",
-        "version": "2.1.0",
+        "version": "2.2.0",
         "mode": "research-only",
+        "modules": ["market", "technical", "onchain", "listings", "stocks", "macro", "history"],
     }
 
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "service": "onchain-ai", "version": "2.1.0"}
+    return {"ok": True, "service": "onchain-ai", "version": "2.2.0"}
 
 
 @app.get("/api/overview")
@@ -76,13 +77,48 @@ def crypto(
         return signal
     except HTTPException:
         raise
-    except Exception:
-        raise HTTPException(502, "Market data unavailable for this symbol.")
+    except Exception as exc:
+        raise HTTPException(502, f"Market data unavailable for this symbol: {str(exc)[:120]}")
 
 
 @app.get("/api/new-listings")
 def new_listings(days: int = 30):
     return get_new_listings(min(max(days, 1), 90))
+
+
+@app.get("/api/onchain/chains")
+def onchain_chains():
+    return {"chains": sorted(RPCS.keys())}
+
+
+@app.get("/api/onchain/{chain}/address/{address}")
+def onchain_address(chain: str, address: str):
+    try:
+        return analyze_address(chain, address)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"On-chain RPC unavailable: {str(exc)[:160]}")
+
+
+@app.get("/api/onchain/{chain}/contract/{address}")
+def onchain_contract(chain: str, address: str):
+    try:
+        return contract_metadata(chain, address)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Contract lookup unavailable: {str(exc)[:160]}")
+
+
+@app.get("/api/onchain/{chain}/tx/{tx_hash}")
+def onchain_tx(chain: str, tx_hash: str):
+    try:
+        return transaction(chain, tx_hash)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Transaction lookup unavailable: {str(exc)[:160]}")
 
 
 @app.get("/api/stock/{symbol}")
