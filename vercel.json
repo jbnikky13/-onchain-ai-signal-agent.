@@ -4,6 +4,9 @@
     "api/index.py": {
       "maxDuration": 60,
       "excludeFiles": "{tests/**,__tests__/**,**/*.test.py,**/test_*.py,fixtures/**,__fixtures__/**,testdata/**,sample-data/**,frontend/**}"
+    },
+    "api/health.py": {
+      "maxDuration": 10
     }
   },
   "rewrites": [
