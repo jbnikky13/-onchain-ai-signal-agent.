@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Query
 from .services.binance import get_symbols,get_klines,get_ticker_24h,market_snapshot,get_new_listings,market_status
-from .services.binance_derivatives import derivatives_snapshot,futures_ticker,futures_funding,futures_open_interest,options_exchange_info,options_ticker,options_mark_price
+from .services.binance_derivatives import derivatives_snapshot,futures_ticker,futures_funding,futures_open_interest,futures_mark_price,derivatives_signal,options_exchange_info,options_ticker,options_mark_price
 from .services.scanner import scan_market
 from .services.stocks import get_stock
 from .services.news import get_company_news
@@ -13,15 +13,15 @@ from .engine.technical import technical_scores
 from .engine.fused_signal import build_fused_market_signal
 from .engine.ai import explain
 from .db import init_db,save_signal,recent,stats
-app=FastAPI(title='Onchain AI Market Intelligence API',version='2.9.0',docs_url='/api/docs',redoc_url='/api/redoc')
+app=FastAPI(title='Onchain AI Market Intelligence API',version='3.0.0',docs_url='/api/docs',redoc_url='/api/redoc')
 @app.on_event('startup')
 def startup():
     try:init_db()
     except Exception:pass
 @app.get('/api')
-def api_root():return {'ok':True,'service':'onchain-ai','version':'2.9.0','mode':'research-only'}
+def api_root():return {'ok':True,'service':'onchain-ai','version':'3.0.0','mode':'research-only'}
 @app.get('/api/health')
-def health():return {'ok':True,'service':'onchain-ai','version':'2.9.0'}
+def health():return {'ok':True,'service':'onchain-ai','version':'3.0.0'}
 @app.get('/api/market/status')
 def market_feed_status():return market_status()
 @app.get('/api/overview')
@@ -35,15 +35,17 @@ def derivatives(symbol:str|None=None):
 @app.get('/api/derivatives/futures')
 def futures(symbol:str|None=None):
     try:
-        rows=futures_ticker();
-        if symbol: rows=[x for x in rows if x.get('symbol')==symbol.upper()]
-        rows.sort(key=lambda x:float(x.get('quoteVolume',0) or 0),reverse=True)
+        rows=futures_ticker(); rows=[x for x in rows if not symbol or x.get('symbol')==symbol.upper()]; rows.sort(key=lambda x:float(x.get('quoteVolume',0) or 0),reverse=True)
         return {'count':len(rows),'symbols':rows[:100],'source':'Binance USDⓈ-M Futures public market data'}
     except Exception as exc:raise HTTPException(502,f'Futures data unavailable: {str(exc)[:160]}')
 @app.get('/api/derivatives/futures/{symbol}')
 def futures_symbol(symbol:str):
-    try:return {'symbol':symbol.upper(),'funding':futures_funding(symbol),'open_interest':futures_open_interest(symbol),'ticker':next((x for x in futures_ticker() if x.get('symbol')==symbol.upper()),None),'source':'Binance USDⓈ-M Futures public market data'}
+    try:return {'symbol':symbol.upper(),'funding':futures_funding(symbol),'mark_price':futures_mark_price(symbol),'open_interest':futures_open_interest(symbol),'ticker':next((x for x in futures_ticker() if x.get('symbol')==symbol.upper()),None),'signal':derivatives_signal(symbol),'source':'Binance USDⓈ-M Futures public market data'}
     except Exception as exc:raise HTTPException(502,f'Futures symbol data unavailable: {str(exc)[:160]}')
+@app.get('/api/derivatives/futures/{symbol}/signal')
+def futures_signal(symbol:str):
+    try:return derivatives_signal(symbol)
+    except Exception as exc:raise HTTPException(502,f'Derivatives signal unavailable: {str(exc)[:160]}')
 @app.get('/api/derivatives/options')
 def options():
     try:return {'exchange_info':options_exchange_info(),'ticker':options_ticker(),'mark':options_mark_price(),'source':'Binance Options public market data'}
