@@ -13,15 +13,15 @@ from .engine.technical import technical_scores
 from .engine.fused_signal import build_fused_market_signal
 from .engine.ai import explain
 from .db import init_db,save_signal,recent,stats
-app=FastAPI(title='Onchain AI Market Intelligence API',version='3.0.0',docs_url='/api/docs',redoc_url='/api/redoc')
+app=FastAPI(title='Onchain AI Market Intelligence API',version='3.1.0',docs_url='/api/docs',redoc_url='/api/redoc')
 @app.on_event('startup')
 def startup():
     try:init_db()
     except Exception:pass
 @app.get('/api')
-def api_root():return {'ok':True,'service':'onchain-ai','version':'3.0.0','mode':'research-only'}
+def api_root():return {'ok':True,'service':'onchain-ai','version':'3.1.0','mode':'research-only'}
 @app.get('/api/health')
-def health():return {'ok':True,'service':'onchain-ai','version':'3.0.0'}
+def health():return {'ok':True,'service':'onchain-ai','version':'3.1.0'}
 @app.get('/api/market/status')
 def market_feed_status():return market_status()
 @app.get('/api/overview')
@@ -68,14 +68,19 @@ def technical(symbol:str,interval:str=Query('1h',pattern='^(5m|15m|1h|4h|1d)$'),
 @app.get('/api/crypto/{symbol}/fused')
 def fused(symbol:str,chain:str|None=None,token:str|None=None,interval:str=Query('1h',pattern='^(5m|15m|1h|4h|1d)$'),limit:int=300):
     try:
-        df=get_klines(symbol.upper(),interval,min(max(limit,80),500));
+        symbol=symbol.upper();df=get_klines(symbol,interval,min(max(limit,80),500))
         if len(df)<60:raise HTTPException(400,'Not enough market history for fused analysis.')
-        context={'score':50,'liquidity':50,'safety':50,'label':'NOT PROVIDED'};detail=None
+        context={'score':50,'liquidity':50,'safety':50,'derivatives':50,'label':'NOT PROVIDED'};detail=None
         if chain and token:
             f=build_signal_fusion(chain,token);oc=f.get('components',{})
             if not f.get('ok'):raise HTTPException(502,'On-chain intelligence could not be loaded for this token.')
-            context={'score':f.get('fusion_score',50),'liquidity':oc.get('dex_liquidity',50),'safety':oc.get('contract_safety',50),'label':f.get('label','NEUTRAL')};detail=f
-        result=build_fused_market_signal(df,context);result.update({'symbol':symbol.upper(),'interval':interval,'onchain':detail or {'score':50,'label':'NOT PROVIDED'},'data_mode':'multi-source' if detail else 'market-only'});return result
+            context.update({'score':f.get('fusion_score',50),'liquidity':oc.get('dex_liquidity',50),'safety':oc.get('contract_safety',50),'label':f.get('label','NEUTRAL')});detail=f
+        deriv=None
+        try:
+            deriv=derivatives_signal(symbol);context['derivatives']=deriv.get('score',50)
+        except Exception:
+            deriv={'symbol':symbol,'score':50,'bias':'UNAVAILABLE','components':{'funding':50,'positioning':50,'taker_flow':50},'source':'Binance derivatives unavailable'}
+        result=build_fused_market_signal(df,context);result.update({'symbol':symbol,'interval':interval,'onchain':detail or {'score':50,'label':'NOT PROVIDED'},'derivatives':deriv,'data_mode':'multi-source' if detail else 'market+derivatives'});return result
     except HTTPException:raise
     except Exception as exc:raise HTTPException(502,f'Fused signal unavailable: {str(exc)[:160]}')
 @app.get('/api/crypto/{symbol}')
